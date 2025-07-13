@@ -1,0 +1,2 @@
+# NeuroBranch
+这是一个使用较高版本pytorch来改进SAT问题中branching heuristic的项目。对应求解器为kissat。
