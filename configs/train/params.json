@@ -1,0 +1,15 @@
+{
+    "d": 128,
+    "n_rounds": 8,
+    "n_update_layers": 2,
+    "n_score_layers": 3,
+    "repeat_layers": false,
+    "mlp_update_nl_at_end": true,
+    "res_layers": true,
+    "norm_axis": 1,
+    "norm_eps": 1e-8,
+    "LC_scale": 0.5,
+    "CL_scale": 0.5,
+    "mlp_transfer_fn": "relu",
+    "weight_reparam": true
+}
