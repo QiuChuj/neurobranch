@@ -1,6 +1,6 @@
 {
-    "clause_dir": "/home/richard/project/neurobranch/dimacs/train/clauses",
-    "score_dir": "/home/richard/project/neurobranch/dimacs/train/scores",
+    "clause_dir": "/home/richard/project/neurobranch/data/clause",
+    "score_dir": "/home/richard/project/neurobranch/data/score",
     "batch_size": 1,
     "val_split": 0.2,
     "max_clauses": 1000,

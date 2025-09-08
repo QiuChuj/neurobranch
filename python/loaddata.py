@@ -23,9 +23,8 @@ class SATDataset(Dataset):
         self.max_vars = max_vars
         self.file_pairs = self._get_file_pairs()
         
-        # 定义NeuroSATArgs命名元组
-        self.NeuroSATArgs = namedtuple('NeuroSATArgs', 
-                                     ['n_vars', 'n_clauses', 'CL_idxs'])
+        # 定义NeuroSATArgs
+        self.NeuroSATArgs = []
         print("数据集初始化完成，找到 {} 个样本".format(len(self.file_pairs)))
     
     def _get_file_pairs(self):
@@ -47,23 +46,21 @@ class SATDataset(Dataset):
         return len(self.file_pairs)
     
     def __getitem__(self, idx):
-        cnf_path, literal_path, score_path = self.file_pairs[idx]
+        clause_path, score_path = self.file_pairs[idx]
         
         # 解析CNF文件
-        n_vars, n_clauses, CL_idxs = self._parse_clauses(cnf_path)
+        n_vars, n_clauses, CL_idxs, position_indexes = self._parse_clauses(clause_path)
         
-        # 解析csv文件获取文字
-        literals = self._parse_literals(literal_path)
+        # 创建NeuroSATArgs对象
+        self.NeuroSATArgs = [n_vars, n_clauses, CL_idxs, position_indexes]
+        args = self.NeuroSATArgs
         
         # 解析CSV文件获取标签
         scores = self._parse_scores(score_path, n_vars)
         
-        # 创建NeuroSATArgs对象
-        args = self.NeuroSATArgs(n_vars=n_vars, n_clauses=n_clauses, CL_idxs=CL_idxs)
-        
         return args, torch.tensor(scores, dtype=torch.float32)
     
-    def _parse_clauses(self, cnf_path):
+    def _parse_clauses(self, clause_path):
         """
         解析CNF文件，提取子句信息
         
@@ -76,7 +73,7 @@ class SATDataset(Dataset):
         n_vars = 0
         n_clauses = 0
         
-        with open(cnf_path, 'r') as f:
+        with open(clause_path, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line.startswith('c') or not line:
@@ -94,7 +91,10 @@ class SATDataset(Dataset):
                         clauses.append(literals)
         
         # 创建子句-文字索引矩阵
-        CL_idxs = torch.zeros((self.max_clauses, 2 * self.max_vars), dtype=torch.float32)
+        CL_idxs = torch.zeros((self.max_clauses, 2 * self.max_vars), dtype=torch.int32)
+        
+        # 创建子句-文字索引，以备后面创建稀疏矩阵使用
+        position_indexes = [[],[]]
         
         for i, clause in enumerate(clauses[:self.max_clauses]):
             for lit in clause:
@@ -102,9 +102,11 @@ class SATDataset(Dataset):
                 # 映射到 [0, 2*n_vars-1] 范围
                 idx = lit - 1 if lit > 0 else (-lit - 1 + n_vars)
                 if idx < 2 * self.max_vars:  # 确保在有效范围内
-                    CL_idxs[i, idx] = 1.0
+                    CL_idxs[i, idx] = 1
+                    position_indexes[0].append(i)  # 子句索引
+                    position_indexes[1].append(idx)  # 文字索引
         
-        return n_vars, n_clauses, CL_idxs
+        return n_vars, n_clauses, CL_idxs, position_indexes
     
     def _parse_scores(self, score_path, n_vars):
         """
@@ -113,31 +115,18 @@ class SATDataset(Dataset):
         返回:
             scores: 变量得分标签 (形状: [n_vars])
         """
-        scores = np.zeros(self.max_vars, dtype=np.float32)
+        scores = np.zeros(n_vars, dtype=np.float64)
         idx = 0
         with open(score_path, 'r') as f:
             reader = csv.reader(f)
             for row in reader:
-                parts = row.strip().split()
                 scores[idx] = row[0]
                 idx += 1
         return scores
-    
-    def _parse_literals(self, literal_path):
-        """
-        用于读取文字文件
-        """
-        literals = np.zeros(self.max_vars * 2, dtype=np.float32)
-        idx = 0
-        with open(literal_path, 'r') as f:
-            for line in f:
-                parts = line.strip().split()
-                literals[idx] = parts[0]
-        return literals
 
 
-# 创建数据加载器
-def create_data_loaders(clause_dir, score_dir, batch_size=64, val_split=0.2, 
+# 创建训练数据加载器
+def create_data_loaders(clause_dir, score_dir, batch_size=1, val_split=0.2, 
                         max_clauses=1000, max_vars=1000):
     """
     创建训练和验证数据加载器
@@ -177,3 +166,27 @@ def create_data_loaders(clause_dir, score_dir, batch_size=64, val_split=0.2,
     print(f"验证集: {len(val_dataset)} 个样本")
     
     return train_loader, val_loader
+
+def create_data_loader(clause_dir, score_dir, batch_size=1, max_clauses=1000, max_vars=1000):
+    """
+    创建单一数据加载器（不划分验证集）
+    
+    参数:
+        clause_dir: 子句文件目录
+        score_dir: 得分文件目录
+        batch_size: 批次大小
+        max_clauses: 最大子句数
+        max_vars: 最大变量数
+        
+    返回:
+        data_loader: 数据加载器
+    """
+    dataset = SATDataset(clause_dir, score_dir, max_clauses, max_vars)
+    
+    data_loader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=False, num_workers=2
+    )
+    
+    print(f"数据集统计: 总共 {len(dataset)} 个样本")
+    
+    return data_loader

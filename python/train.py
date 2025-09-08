@@ -3,6 +3,7 @@ from torch.optim import Adam
 from neurobranch import NeuroBranch
 from loaddata import SATDataset, create_data_loaders
 import json
+import pickle
 
 # 完整训练流程
 def full_training_pipeline(config):
@@ -34,10 +35,9 @@ def full_training_pipeline(config):
     # 设置训练设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
-    
+
     # 训练模型
     train_losses, val_losses = net.train(
-        model=net,
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
@@ -48,7 +48,7 @@ def full_training_pipeline(config):
     
     # 返回训练结果
     return {
-        'model': model,
+        'model': net,
         'train_losses': train_losses,
         'val_losses': val_losses
     }

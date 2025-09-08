@@ -7,6 +7,7 @@ from collections import namedtuple
 from torch.nn.parameter import Parameter
 import time
 from torch.nn import MSELoss
+import pickle
 
 class MLP(nn.Module):
     def __init__(self, params, d_in, d_outs, name=None, nl_at_end=False):
@@ -86,8 +87,8 @@ class NeuroBranch(nn.Module):
     def __init__(self, params):
         super(NeuroBranch, self).__init__()
         self.params = params
-        self.n_rounds = params['n_rounds']
-        self.d = params['d']
+        self.d = self.params['d']
+        self.n_rounds = self.params['n_rounds']
         self.device = torch.cuda.get_device_name(0)
         
         # 初始化可学习参数
@@ -118,22 +119,25 @@ class NeuroBranch(nn.Module):
                            repeat_end(params['d'], params['n_score_layers'], 1),
                            name="V_score", nl_at_end=False)
 
-    def forward(self, args):
+    def forward(self, vars, clauses, CL_indexes, position_indexes):
         # 解包参数
-        n_vars = args.n_vars
+        n_vars = vars
         n_lits = 2 * n_vars
-        n_clauses = args.n_clauses
-        CL_idxs = args.CL_idxs
+        n_clauses = clauses
+        CL_idxs = CL_indexes
+        pos_idxs = position_indexes
         
         # 构建稀疏矩阵 CL (clause-literals) 和转置 LC (literal-clauses)
-        indices = CL_idxs.t().long()
-        values = torch.ones(CL_idxs.size(0), device=CL_idxs.device)
+        #! 对应的是文章中的G和G^T
+        # print("位置矩阵的形状：")
+        # print(pos_idxs.shape[1])
+        values = torch.ones(pos_idxs.shape[1], device=CL_idxs.device)
         CL_sparse = torch.sparse_coo_tensor(
-            indices, values, 
+            pos_idxs, values, 
             size=(n_clauses, n_lits)
         )
         LC_sparse = torch.sparse_coo_tensor(
-            indices.flip([0]), values,
+            pos_idxs.flip([0]), values,
             size=(n_lits, n_clauses)
         ).coalesce()
 
@@ -166,6 +170,8 @@ class NeuroBranch(nn.Module):
         # 生成变量评分
         V = torch.cat([L[:n_vars], L[n_vars:]], dim=-1)
         V_scores = self.V_score(V).squeeze(-1)
+        # print("变量评分的数据类型：")
+        # print(V_scores.dtype)
         
         # 返回命名元组
         NeuroSATGuesses = namedtuple('NeuroSATGuesses', ['pi_core_var_logits'])
@@ -184,16 +190,14 @@ class NeuroBranch(nn.Module):
     
     def load(self, path):
         """从指定路径加载模型参数"""
-        self.load_state_dict(torch.load(path, map_location=self.device))
-        self.eval()
+        self.load_state_dict(torch.load(path))
         
-    def train(model, train_loader, val_loader, optimizer, device, 
-                      epochs=10, save_path='/home/richard/project/neurobranch/models/EasySAT/neurobranch_model.pth'):
+    def train_epoch(self, train_loader, val_loader, optimizer, device, 
+                      epochs=50, save_path='/home/richard/project/neurobranch/models/EasySAT/neurobranch_model.pth'):
         """
         训练NeuroBranch模型的完整流程
         
         参数:
-            model: 初始化好的NeuroBranch模型
             train_loader: 训练数据加载器
             val_loader: 验证数据加载器
             optimizer: 优化器实例
@@ -205,28 +209,30 @@ class NeuroBranch(nn.Module):
             train_losses: 各轮训练损失
             val_losses: 各轮验证损失
         """
+        self.train()  # 设置模型为训练模式
         criterion = MSELoss()  # 均方误差损失函数
         train_losses = []
         val_losses = []
         
         # 将模型移到指定设备
-        model = model.to(device)
+        self.to(device)
         
         for epoch in range(epochs):
             # 训练阶段
-            model.train()
             epoch_train_loss = 0.0
             start_time = time.time()
             
-            for batch in train_loader:
+            for args_batch, labels_batch in train_loader:
                 # 解包批次数据
-                args_batch, labels_batch = batch
-                args_batch = args_batch.to(device)
-                labels_batch = labels_batch.to(device)
+                vars = torch.tensor(args_batch[0]).to(device)
+                clauses = torch.tensor(args_batch[1]).to(device)
+                CL_batch = torch.tensor(args_batch[2][0], dtype=torch.int32).to(device)
+                pos_batch = torch.tensor(args_batch[3], dtype=torch.int32).to(device)
+                labels_batch = torch.tensor(labels_batch[0], dtype=torch.float32).to(device)
                 
                 # 前向传播
                 optimizer.zero_grad()
-                output = model(args_batch)
+                output = self.forward(vars, clauses, CL_batch, pos_batch)
                 
                 # 计算损失
                 loss = criterion(output.pi_core_var_logits, labels_batch)
@@ -242,15 +248,18 @@ class NeuroBranch(nn.Module):
             train_losses.append(avg_train_loss)
             
             # 验证阶段
-            model.eval()
+            # model.eval()
             epoch_val_loss = 0.0
             with torch.no_grad():
-                for batch in val_loader:
-                    args_batch, labels_batch = batch
-                    args_batch = args_batch.to(device)
-                    labels_batch = labels_batch.to(device)
+                for args_batch, labels_batch in val_loader:
+                    # 解包批次数据
+                    vars = torch.tensor(args_batch[0]).to(device)
+                    clauses = torch.tensor(args_batch[1]).to(device)
+                    CL_batch = torch.tensor(args_batch[2][0], dtype=torch.int32).to(device)
+                    pos_batch = torch.tensor(args_batch[3], dtype=torch.int32).to(device)
+                    labels_batch = torch.tensor(labels_batch[0], dtype=torch.float32).to(device)
                     
-                    output = model(args_batch)
+                    output = self.forward(vars, clauses, CL_batch, pos_batch)
                     loss = criterion(output.pi_core_var_logits, labels_batch)
                     epoch_val_loss += loss.item()
             
@@ -265,10 +274,44 @@ class NeuroBranch(nn.Module):
                 f'Time: {epoch_time:.2f}s')
         
         # 保存训练好的模型
-        torch.save(model.state_dict(), save_path)
+        self.save(self.state_dict(), save_path)
         print(f'Model saved to {save_path}')
         
         return train_losses, val_losses
+    
+    def apply(self, data_loader, device, model_path='/home/richard/project/neurobranch/models/EasySAT/neurobranch_model.pth'):
+        """
+        应用预训练的NeuroBranch模型进行推理
+        
+        参数:
+            train_loader: 训练数据加载器
+            val_loader: 验证数据加载器
+            optimizer: 优化器实例
+            device: 训练设备 (cpu/cuda)
+            model_path: 预训练模型路径
+            
+        返回:
+            output: 模型输出
+        """
+
+        # 加载模型并移到指定设备
+        self.load(model_path)
+        self.eval()
+        self.to(device)
+        
+        for args_batch, labels_batch in data_loader:
+            # 解包批次数据
+            vars = torch.tensor(args_batch[0]).to(device)
+            clauses = torch.tensor(args_batch[1]).to(device)
+            CL_batch = torch.tensor(args_batch[2][0], dtype=torch.int32).to(device)
+            pos_batch = torch.tensor(args_batch[3], dtype=torch.int32).to(device)
+            
+            # 前向传播
+            output = self.forward(vars, clauses, CL_batch, pos_batch)
+        
+        return output.pi_core_var_logits
+        
+        
 
 # 辅助函数
 def repeat_end(val, n, k):
