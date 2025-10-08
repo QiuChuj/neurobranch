@@ -11,5 +11,6 @@
     "LC_scale": 0.5,
     "CL_scale": 0.5,
     "mlp_transfer_fn": "relu",
-    "weight_reparam": true
+    "weight_reparam": true,
+    "new_model": true
 }

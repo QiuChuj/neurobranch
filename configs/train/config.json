@@ -5,7 +5,7 @@
     "val_split": 0.2,
     "max_clauses": 1000,
     "max_vars": 1000,
-    "learning_rate": 0.001,
-    "epochs": 10,
-    "save_path": "/home/richard/project/neurobranch/models/EasySAT/neurobranch_model.pth"
+    "learning_rate": 0.00001,
+    "epochs": 1,
+    "save_path": "/home/richard/project/neurobranch/models/EasySAT/v_1000_c_1000/neurobranch_model.pth"
 }

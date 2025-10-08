@@ -28,4 +28,4 @@ output = net.apply(data_loader, device)
 
 output = output.detach().cpu().numpy()
 output = pd.DataFrame(output)
-output.to_csv('/home/richard/project/neurobranch/results/output.csv', index=False, header=False)
+output.to_csv('/home/richard/project/neurobranch/results/output.csv', mode='w',index=False, header=False)

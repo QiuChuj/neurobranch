@@ -1,11 +1,11 @@
 {
-    "clause_dir": "/home/richard/project/neurobranch/data/clause",
-    "score_dir": "/home/richard/project/neurobranch/data/score",
+    "clause_dir": "/home/richard/project/neurobranch/data/EasySAT/clause",
+    "score_dir": "/home/richard/project/neurobranch/data/EasySAT/score",
     "batch_size": 1,
     "val_split": 0.2,
     "max_clauses": 1000,
     "max_vars": 1000,
-    "learning_rate": 0.001,
-    "epochs": 10,
+    "learning_rate": 0.00001,
+    "epochs": 1,
     "save_path": "/home/richard/project/neurobranch/models/EasySAT/neurobranch_model.pth"
 }

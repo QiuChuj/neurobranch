@@ -1,1 +1,1 @@
-python ./python/train.py
+python /home/richard/project/neurobranch/python/train.py

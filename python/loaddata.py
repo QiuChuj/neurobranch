@@ -16,7 +16,7 @@ class SATDataset(Dataset):
         max_clauses: 最大子句数（用于填充）
         max_vars: 最大变量数（用于填充）
     """
-    def __init__(self, clause_dir, score_dir, max_clauses=1000, max_vars=1000):
+    def __init__(self, clause_dir, score_dir, max_clauses, max_vars):
         self.clause_dir = clause_dir
         self.score_dir = score_dir
         self.max_clauses = max_clauses
@@ -25,7 +25,6 @@ class SATDataset(Dataset):
         
         # 定义NeuroSATArgs
         self.NeuroSATArgs = []
-        print("数据集初始化完成，找到 {} 个样本".format(len(self.file_pairs)))
     
     def _get_file_pairs(self):
         """获取匹配的CNF和CSV文件对"""
@@ -49,10 +48,10 @@ class SATDataset(Dataset):
         clause_path, score_path = self.file_pairs[idx]
         
         # 解析CNF文件
-        n_vars, n_clauses, CL_idxs, position_indexes = self._parse_clauses(clause_path)
+        n_vars, n_clauses, position_indexes = self._parse_clauses(clause_path)
         
         # 创建NeuroSATArgs对象
-        self.NeuroSATArgs = [n_vars, n_clauses, CL_idxs, position_indexes]
+        self.NeuroSATArgs = [n_vars, n_clauses, position_indexes]
         args = self.NeuroSATArgs
         
         # 解析CSV文件获取标签
@@ -67,7 +66,7 @@ class SATDataset(Dataset):
         返回:
             n_vars: 变量数量
             n_clauses: 子句数量
-            CL_idxs: 子句-文字索引张量 (形状: [n_clauses, max_clauses])
+            position_indexes: 子句-文字索引张量 (形状: [2, ?])
         """
         clauses = []
         n_vars = 0
@@ -90,9 +89,6 @@ class SATDataset(Dataset):
                     if literals:
                         clauses.append(literals)
         
-        # 创建子句-文字索引矩阵
-        CL_idxs = torch.zeros((self.max_clauses, 2 * self.max_vars), dtype=torch.int32)
-        
         # 创建子句-文字索引，以备后面创建稀疏矩阵使用
         position_indexes = [[],[]]
         
@@ -102,11 +98,10 @@ class SATDataset(Dataset):
                 # 映射到 [0, 2*n_vars-1] 范围
                 idx = lit - 1 if lit > 0 else (-lit - 1 + n_vars)
                 if idx < 2 * self.max_vars:  # 确保在有效范围内
-                    CL_idxs[i, idx] = 1
                     position_indexes[0].append(i)  # 子句索引
                     position_indexes[1].append(idx)  # 文字索引
         
-        return n_vars, n_clauses, CL_idxs, position_indexes
+        return n_vars, n_clauses, position_indexes
     
     def _parse_scores(self, score_path, n_vars):
         """
@@ -161,13 +156,9 @@ def create_data_loaders(clause_dir, score_dir, batch_size=1, val_split=0.2,
         val_dataset, batch_size=batch_size, shuffle=False, num_workers=2
     )
     
-    print(f"数据集统计: 总共 {len(full_dataset)} 个样本")
-    print(f"训练集: {len(train_dataset)} 个样本")
-    print(f"验证集: {len(val_dataset)} 个样本")
-    
     return train_loader, val_loader
 
-def create_data_loader(clause_dir, score_dir, batch_size=1, max_clauses=1000, max_vars=1000):
+def create_data_loader(clause_dir, score_dir, batch_size, max_clauses, max_vars):
     """
     创建单一数据加载器（不划分验证集）
     
@@ -186,7 +177,5 @@ def create_data_loader(clause_dir, score_dir, batch_size=1, max_clauses=1000, ma
     data_loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=False, num_workers=2
     )
-    
-    print(f"数据集统计: 总共 {len(dataset)} 个样本")
     
     return data_loader

@@ -1,1 +1,1 @@
-python ./python/apply.py
+python /home/richard/project/neurobranch/python/apply.py
