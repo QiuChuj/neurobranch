@@ -3,7 +3,7 @@
     "score_dir": "/home/richard/project/neurobranch/dimacs/train/scores",
     "batch_size": 1,
     "val_split": 0.2,
-    "max_clauses": 1000,
+    "max_clauses": 5000,
     "max_vars": 1000,
     "learning_rate": 0.00001,
     "epochs": 1,

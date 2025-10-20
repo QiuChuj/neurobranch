@@ -213,7 +213,7 @@ class NeuroBranch(nn.Module):
         self.load_state_dict(torch.load(path))
         
     def train_epoch(self, train_loader, val_loader, optimizer, device, 
-                      epochs=1, save_path='/home/richard/project/neurobranch/models/EasySAT/v_1000_c_6000/neurobranch_model.pth'):
+                      epochs=1, save_path='/home/richard/project/neurobranch/models/EasySAT/v_1000_c_5000/neurobranch_model.pth'):
         """
         训练NeuroBranch模型的完整流程
         
@@ -247,27 +247,27 @@ class NeuroBranch(nn.Module):
                 i += 1
                 print("Training: file ", i)
                 # 解包批次数据
-                print("Constructing tensors:")
+                # print("Constructing tensors:")
                 vars = args_batch[0].detach().to(device)
                 clauses = args_batch[1].detach().to(device)
                 pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(device)
                 labels_batch = labels_batch[0].detach().to(device)
                 
                 # 前向传播
-                print("Forward:")
+                # print("Forward:")
                 optimizer.zero_grad()
                 output = self.forward(vars, clauses, pos_batch)
                 
                 # 计算损失
-                print("Loss computation:")
+                # print("Loss computation:")
                 loss = criterion(output.pi_core_var_logits, labels_batch)
                 
                 # 反向传播
-                print("Loss backward:")
+                # print("Loss backward:")
                 loss.backward()
                 #! 梯度裁剪
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-                print("Loss backward complete.")
+                # print("Loss backward complete.")
                 optimizer.step()
                 
                 epoch_train_loss += loss.item()
