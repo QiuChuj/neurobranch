@@ -214,13 +214,19 @@ class NeuroBranch(nn.Module):
         NeuroSATGuesses = namedtuple('NeuroSATGuesses', ['pi_core_var_logits'])
         return NeuroSATGuesses(pi_core_var_logits=V_scores)
     
-    def _normalize(self, x, axis, eps):
+    def _normalize(self, x, axis):
         """张量归一化"""
         if axis == 0:
-            return (x - x.mean(0)) / (x.std(0) + eps)
+            return (x - x.mean(0)) / x.std(0)
         else:  # axis = 1
-            return (x - x.mean(1, keepdim=True)) / (x.std(1, keepdim=True) + eps)
+            return (x - x.mean(1, keepdim=True)) / x.std(1, keepdim=True)
         
+    def min_max_normalize(self, x):
+        """最小-最大归一化"""
+        min_x = x.min()
+        max_x = x.max()
+        return (x - min_x) / (max_x - min_x + 1e-8)
+    
     def save(self):
         """保存模型参数到指定路径"""
         torch.save(self.state_dict(), self.model_path)
@@ -264,7 +270,7 @@ class NeuroBranch(nn.Module):
                 vars = args_batch[0].detach().to(self.device)
                 clauses = args_batch[1].detach().to(self.device)
                 pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(self.device)
-                labels_batch = labels_batch[0].detach().to(self.device)
+                labels_batch = labels_batch.detach().to(self.device)
                 
                 # 前向传播
                 # print("Forward:")

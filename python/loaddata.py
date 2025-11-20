@@ -103,19 +103,35 @@ class SATDataset(Dataset):
         
         return n_vars, n_clauses, position_indexes
     
+    # def _parse_scores(self, score_path, n_vars):
+    #     """
+    #     解析CSV文件，获取文字得分标签
+        
+    #     返回:
+    #         scores: 变量得分标签 (形状: [n_vars])
+    #     """
+    #     scores = np.zeros(n_vars, dtype=np.float64)
+    #     idx = 0
+    #     with open(score_path, 'r') as f:
+    #         reader = csv.reader(f)
+    #         for row in reader:
+    #             scores[idx] = row[0]
+    #             idx += 1
+    #     return scores
     def _parse_scores(self, score_path, n_vars):
         """
         解析CSV文件，获取文字得分标签
+        csv文件每行包含一个变量的8个得分，共有n_vars行
         
         返回:
-            scores: 变量得分标签 (形状: [n_vars])
+            scores: 变量得分标签 (形状: [8, n_vars])
         """
-        scores = np.zeros(n_vars, dtype=np.float64)
+        scores = np.zeros([8, n_vars], dtype=np.float64)
         idx = 0
         with open(score_path, 'r') as f:
             reader = csv.reader(f)
             for row in reader:
-                scores[idx] = row[0]
+                scores[:, idx] = [float(x) for x in row[:8]]
                 idx += 1
         return scores
 
