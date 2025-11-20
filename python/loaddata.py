@@ -119,6 +119,19 @@ class SATDataset(Dataset):
                 idx += 1
         return scores
 
+#! 定义共享内存版数据类
+class ApplyDataset(Dataset):
+    def __init__(self, n_vars, n_clauses, pos_idx):
+        super().__init__()
+        self.n_vars = n_vars
+        self.n_clauses = n_clauses
+        self.position_indexes = pos_idx
+        
+    def __getitem__(self, idx):
+        return [self.n_vars, self.n_clauses, self.position_indexes]
+    
+    def __len__(self):
+        return 1
 
 # 创建训练数据加载器
 def create_data_loaders(clause_dir, score_dir, batch_size=1, val_split=0.2, 
@@ -158,24 +171,13 @@ def create_data_loaders(clause_dir, score_dir, batch_size=1, val_split=0.2,
     
     return train_loader, val_loader
 
-def create_data_loader(clause_dir, score_dir, batch_size, max_clauses, max_vars):
-    """
-    创建单一数据加载器（不划分验证集）
-    
-    参数:
-        clause_dir: 子句文件目录
-        score_dir: 得分文件目录
-        batch_size: 批次大小
-        max_clauses: 最大子句数
-        max_vars: 最大变量数
-        
-    返回:
-        data_loader: 数据加载器
-    """
-    dataset = SATDataset(clause_dir, score_dir, max_clauses, max_vars)
+#! 创建应用数据加载器
+def create_data_loader(n_vars, n_clauses, pos_idxs):
+
+    dataset = ApplyDataset(n_vars, n_clauses, pos_idxs)
     
     data_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=False, num_workers=2
+        dataset, batch_size=1, shuffle=False, num_workers=2
     )
     
     return data_loader

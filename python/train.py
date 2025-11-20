@@ -1,7 +1,6 @@
-import torch
 from torch.optim import Adam
 from neurobranch import NeuroBranch
-from loaddata import SATDataset, create_data_loaders
+from loaddata import create_data_loaders
 import json
 
 # 完整训练流程
@@ -30,26 +29,17 @@ def full_training_pipeline(config):
     
     # 设置优化器
     optimizer = Adam(net.parameters(), lr=config['learning_rate'])
-    
-    # 设置训练设备
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 训练模型
     train_losses, val_losses = net.train_epoch(
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
-        device=device,
-        epochs=config['epochs'],
-        save_path=config['save_path']
+        epochs=config['epochs']
     )
     
     # 返回训练结果
-    return {
-        'model': net,
-        'train_losses': train_losses,
-        'val_losses': val_losses
-    }
+    return train_losses, val_losses
 
 # 示例配置和使用
 if __name__ == "__main__":

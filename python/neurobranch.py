@@ -6,7 +6,7 @@ import math
 from collections import namedtuple
 from torch.nn.parameter import Parameter
 import time
-import pandas as pd
+# import pandas as pd
 from datetime import datetime
 from torch.nn import MSELoss
 
@@ -92,6 +92,8 @@ class NeuroBranch(nn.Module):
         self.n_rounds = self.params['n_rounds']
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.new_model = params['new_model']
+        self.train_mode = params['train_mode']
+        self.model_path = params['model_path']
         self.forward_time = 0
         
         # 初始化可学习参数
@@ -123,10 +125,20 @@ class NeuroBranch(nn.Module):
                            name="V_score", nl_at_end=False)
         
         # 将模型移到指定设备
+        if not self.train_mode:
+            # 加载模型并移到指定设备
+            self.load()
+            self.eval()
+        elif not self.new_model:
+            self.load()
+            self.train()
+        else:
+            self.train()
         self.to(self.device)
 
     def forward(self, vars, clauses, position_indexes):
         # 解包参数
+        # print("初始化参数：")
         n_vars = vars
         n_lits = 2 * n_vars
         n_clauses = clauses
@@ -135,17 +147,22 @@ class NeuroBranch(nn.Module):
         # 构建稀疏矩阵 CL (clause-literals) 和转置 LC (literal-clauses)
         #! 对应的是文章中的G和G^T
 
+        # print("构建稀疏矩阵：")
         values = torch.ones(pos_idxs.shape[1], device=self.device)
+        # print(pos_idxs.shape, pos_idxs.shape[0], pos_idxs.shape[1])/
+        # print(values.shape)
+        #! 这句出现问题：number of dimensions must be sparse_dim (1) + dense_dim (0), but got 2
         CL_sparse = torch.sparse_coo_tensor(
             pos_idxs, values, 
             size=(n_clauses, n_lits),
         )
+        # print("2")
         LC_sparse = torch.sparse_coo_tensor(
             pos_idxs.flip([0]), values,
             size=(n_lits, n_clauses),
         ).coalesce()
 
-        # 初始化文字和子句状态
+        # print("初始化文字和子句状态：")
         # print(n_lits)
         # print(n_clauses)
         # print(self.d)
@@ -191,7 +208,7 @@ class NeuroBranch(nn.Module):
         V = torch.cat([L[:n_vars], L[n_vars:]], dim=-1)
         V_scores = self.V_score(V).squeeze(-1)
         # print("V_scores:")
-        print(V_scores.shape)
+        # print(V_scores.shape)
         
         # 返回命名元组
         NeuroSATGuesses = namedtuple('NeuroSATGuesses', ['pi_core_var_logits'])
@@ -204,16 +221,16 @@ class NeuroBranch(nn.Module):
         else:  # axis = 1
             return (x - x.mean(1, keepdim=True)) / (x.std(1, keepdim=True) + eps)
         
-    def save(self, path):
+    def save(self):
         """保存模型参数到指定路径"""
-        torch.save(self.state_dict(), path)
+        torch.save(self.state_dict(), self.model_path)
     
-    def load(self, path):
+    def load(self):
         """从指定路径加载模型参数"""
-        self.load_state_dict(torch.load(path))
+        self.load_state_dict(torch.load(self.model_path))
         
-    def train_epoch(self, train_loader, val_loader, optimizer, device, 
-                      epochs=1, save_path='/home/richard/project/neurobranch/models/EasySAT/v_1000_c_5000/neurobranch_model.pth'):
+    def train_epoch(self, train_loader, val_loader, optimizer, 
+                      epochs=1):
         """
         训练NeuroBranch模型的完整流程
         
@@ -232,10 +249,6 @@ class NeuroBranch(nn.Module):
         criterion = MSELoss()  # 均方误差损失函数
         train_losses = []
         val_losses = []
-        # 是否加载现有模型
-        if not self.new_model:
-            self.load(save_path)
-        self.train()  # 设置模型为训练模式
         
         for epoch in range(epochs):
             # 训练阶段
@@ -248,10 +261,10 @@ class NeuroBranch(nn.Module):
                 print("Training: file ", i)
                 # 解包批次数据
                 # print("Constructing tensors:")
-                vars = args_batch[0].detach().to(device)
-                clauses = args_batch[1].detach().to(device)
-                pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(device)
-                labels_batch = labels_batch[0].detach().to(device)
+                vars = args_batch[0].detach().to(self.device)
+                clauses = args_batch[1].detach().to(self.device)
+                pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(self.device)
+                labels_batch = labels_batch[0].detach().to(self.device)
                 
                 # 前向传播
                 # print("Forward:")
@@ -283,10 +296,10 @@ class NeuroBranch(nn.Module):
                 for args_batch, labels_batch in val_loader:
                     print("Evaluating:")
                     # 解包批次数据
-                    vars = args_batch[0].detach().to(device)
-                    clauses = args_batch[1].detach().to(device)
-                    pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(device)
-                    labels_batch = labels_batch[0].detach().to(device)
+                    vars = args_batch[0].detach().to(self.device)
+                    clauses = args_batch[1].detach().to(self.device)
+                    pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(self.device)
+                    labels_batch = labels_batch[0].detach().to(self.device)
                     
                     output = self.forward(vars, clauses, pos_batch)
                     loss = criterion(output.pi_core_var_logits, labels_batch)
@@ -303,18 +316,17 @@ class NeuroBranch(nn.Module):
                 f'Time: {epoch_time:.2f}s')
         
         # 保存训练好的模型
-        self.save(save_path)
-        print(f'Model saved to {save_path}')
+        self.save()
+        print(f'Model saved to {self.model_path}')
         
         return train_losses, val_losses
     
-    def apply(self, data_loader, device, model_path='/home/richard/project/neurobranch/models/EasySAT/v_1000_c_1000/neurobranch_model.pth'):
+    def apply(self, data_loader):
         """
         应用预训练的NeuroBranch模型进行推理
         
         参数:
-            train_loader: 训练数据加载器
-            val_loader: 验证数据加载器
+            data_loader: 训练数据加载器
             optimizer: 优化器实例
             device: 训练设备 (cpu/cuda)
             model_path: 预训练模型路径
@@ -322,52 +334,53 @@ class NeuroBranch(nn.Module):
         返回:
             output: 模型输出
         """
-
-        # 加载模型并移到指定设备
-        self.load(model_path)
-        self.eval()
         
-        for args_batch, labels_batch in data_loader:
+        #! 这里有问题，加载不出来
+        # print("加载器加载 ··· ···")
+        for args_batch in data_loader:
             # 解包批次数据
-            vars = args_batch[0].detach().to(device)
-            clauses = args_batch[1].detach().to(device)
-            pos_batch = torch.tensor(args_batch[2], dtype=torch.int32).to(device)
+            # print(args_batch.shape)
+            # print("数据解包 ··· ···")
+            vars = args_batch[0].detach().to(self.device)
+            clauses = args_batch[1].detach().to(self.device)
+            pos_batch = torch.tensor(args_batch[2][0], dtype=torch.int32).to(self.device)
 
             # 前向传播
-            start = time.perf_counter()
+            # start = time.perf_counter()
+            # print("前向传播 ··· ···")
             output = self.forward(vars, clauses, pos_batch)
-            end = time.perf_counter()
-            self.forward_time = end - start
-            self.log_time_to_csv()
+            # end = time.perf_counter()
+            # self.forward_time = end - start
+            # self.log_time_to_csv()
         
         return output.pi_core_var_logits
     
-    def log_time_to_csv(self, filename='/home/richard/project/neurobranch/time.csv'):
-        """
-        使用 pandas 将计时结果（单次一个时间）写入或追加到 CSV 文件。
+    # def log_time_to_csv(self, filename='/home/richard/project/neurobranch/time.csv'):
+    #     """
+    #     使用 pandas 将计时结果（单次一个时间）写入或追加到 CSV 文件。
 
-        Args:
-            duration (float): 通过 time.perf_counter() 计算得到的时间间隔（秒）。
-            filename (str, optional): CSV 文件名。默认为 'timings.csv'.
-            label (str, optional): 本次计时的标签或描述。默认为 None.
+    #     Args:
+    #         duration (float): 通过 time.perf_counter() 计算得到的时间间隔（秒）。
+    #         filename (str, optional): CSV 文件名。默认为 'timings.csv'.
+    #         label (str, optional): 本次计时的标签或描述。默认为 None.
 
-        Returns:
-            None
-        """
-        # 创建新数据行
-        new_row = pd.DataFrame({'duration_seconds': [self.forward_time]})
+    #     Returns:
+    #         None
+    #     """
+    #     # 创建新数据行
+    #     new_row = pd.DataFrame({'duration_seconds': [self.forward_time]})
 
-        try:
-            # 尝试读取现有文件
-            existing_df = pd.read_csv(filename)
-            # 如果文件存在，将新行追加到现有数据的末尾
-            updated_df = pd.concat([existing_df, new_row], ignore_index=True)
-        except FileNotFoundError:
-            # 如果文件不存在，新数据就是初始数据
-            updated_df = new_row
+    #     try:
+    #         # 尝试读取现有文件
+    #         existing_df = pd.read_csv(filename)
+    #         # 如果文件存在，将新行追加到现有数据的末尾
+    #         updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+    #     except FileNotFoundError:
+    #         # 如果文件不存在，新数据就是初始数据
+    #         updated_df = new_row
 
-        # 将 DataFrame 写回 CSV，不保留索引列
-        updated_df.to_csv(filename, index=False)
+    #     # 将 DataFrame 写回 CSV，不保留索引列
+    #     updated_df.to_csv(filename, index=False)
         
         
 

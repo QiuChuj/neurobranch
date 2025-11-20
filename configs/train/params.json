@@ -12,5 +12,7 @@
     "CL_scale": 0.5,
     "mlp_transfer_fn": "relu",
     "weight_reparam": true,
-    "new_model": false
+    "new_model": false,
+    "train_mode": true,
+    "model_path": "/home/richard/project/neurobranch/models/EasySAT/v_1000_c_1000/neurobranch_model.pth"
 }

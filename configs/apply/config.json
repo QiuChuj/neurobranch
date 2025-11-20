@@ -6,6 +6,5 @@
     "max_clauses": 1000,
     "max_vars": 1000,
     "learning_rate": 0.00001,
-    "epochs": 1,
-    "save_path": "/home/richard/project/neurobranch/models/EasySAT/neurobranch_model.pth"
+    "epochs": 1
 }
