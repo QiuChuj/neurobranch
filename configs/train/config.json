@@ -7,5 +7,5 @@
     "max_vars": 1000,
     "learning_rate": 0.00001,
     "epochs": 1,
-    "save_path": "/home/richard/project/neurobranch/models/EasySAT/v_1000_c_1000/neurobranch_model.pth"
+    "save_path": "/home/richard/project/neurobranch/models/kissat_simp/v_1000_c_1000/neurobranch_model.pth"
 }

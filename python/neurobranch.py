@@ -279,7 +279,16 @@ class NeuroBranch(nn.Module):
                 
                 # 计算损失
                 # print("Loss computation:")
-                loss = criterion(output.pi_core_var_logits, labels_batch)
+                #! 这里添加simp版本的loss计算
+                #! 将loss分为8个1*1000的部分计算，然后取平均
+                label_chuncks = min_max_normalize_chunks(labels_batch)
+                loss = 0.0
+                output_chunk = adjust_tensor_simple(output.pi_core_var_logits)
+                for j in range(8):
+                    loss += criterion(output_chunk, label_chuncks[j])
+                loss = loss / 8.0
+                
+                # loss = criterion(output.pi_core_var_logits, labels_batch)
                 
                 # 反向传播
                 # print("Loss backward:")
@@ -399,3 +408,61 @@ def print_memory_usage(stage):
     print(f"Allocated: {torch.cuda.memory_allocated() / 1024 ** 3:.2f} GB")
     print(f"Reserved: {torch.cuda.memory_reserved() / 1024 ** 3:.2f} GB")
     print(f"Max Allocated: {torch.cuda.max_memory_allocated() / 1024 ** 3:.2f} GB\n")
+    
+def min_max_normalize_chunks(tensor, epsilon=1e-8):
+    """
+    将8x1000张量拆分为8个1x1000张量并分别进行Min-Max归一化
+    
+    参数:
+        tensor: 形状为[8, 1000]的输入张量
+        epsilon: 防止除零的小常数，默认1e-8
+    
+    返回:
+        normalized_chunks: 归一化后的张量列表，包含8个形状为[1, 1000]的张量
+    """
+    # 检查输入张量形状
+    if tensor.dim() != 2:
+        raise ValueError("输入张量必须是二维的")
+    
+    if tensor.shape[0] != 8 or tensor.shape[1] != 1000:
+        print(f"警告: 输入张量形状为{tensor.shape}，期望形状为[8, 1000]")
+    
+    # 使用torch.chunk沿第0维拆分成8个1x1000的张量[1](@ref)
+    chunks = torch.chunk(tensor, chunks=8, dim=0)
+    
+    normalized_chunks = []
+    
+    # 对每个块单独进行Min-Max归一化[2,5](@ref)
+    for i, chunk in enumerate(chunks):
+        # 计算当前块的最小值和最大值
+        min_val = chunk.min()
+        max_val = chunk.max()
+        
+        # 处理所有值相同的情况（避免除零）
+        if max_val - min_val < epsilon:
+            # 如果所有值相同，归一化到0
+            normalized_chunk = torch.zeros_like(chunk)
+        else:
+            # 应用Min-Max归一化公式: (x - min) / (max - min)
+            normalized_chunk = (chunk - min_val) / (max_val - min_val + epsilon)
+        
+        normalized_chunks.append(normalized_chunk)
+    
+    return normalized_chunks
+
+def adjust_tensor_simple(tensor, target_shape=(1, 1000)):
+    """
+    使用PyTorch内置函数简化调整过程
+    """
+    # 展平为一维
+    flattened = tensor.flatten()
+    
+    # 使用pad函数进行填充（更高效）
+    if len(flattened) < target_shape[1]:
+        padding = target_shape[1] - len(flattened)
+        # 在末尾填充0
+        padded = torch.nn.functional.pad(flattened, (0, padding))
+    else:
+        padded = flattened[:target_shape[1]]
+    
+    return padded.unsqueeze(0)  # 添加批次维度
